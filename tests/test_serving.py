@@ -168,6 +168,40 @@ def test_watchdog_reloader_ignores_closed_no_write(mock_trigger_reload: Mock) ->
     mock_trigger_reload.assert_not_called()
 
 
+@patch.object(WatchdogReloaderLoop, "trigger_reload")
+def test_watchdog_reloader_subdirectory_files(mock_trigger_reload: Mock) -> None:
+    pytest.importorskip("watchdog")
+    from watchdog.events import EVENT_TYPE_MODIFIED
+    from watchdog.events import FileModifiedEvent
+
+    reloader = WatchdogReloaderLoop(
+        extra_files=["extra.txt", "sub/extra2.txt"],
+        exclude_patterns=["excluded.py"],
+    )
+
+    subdir_event = FileModifiedEvent("sub/directory/app.py")
+    subdir_event.event_type = EVENT_TYPE_MODIFIED
+    reloader.event_handler.dispatch(subdir_event)
+    mock_trigger_reload.assert_called_once()
+
+    mock_trigger_reload.reset_mock()
+    extra_event = FileModifiedEvent(os.path.abspath("sub/extra2.txt"))
+    extra_event.event_type = EVENT_TYPE_MODIFIED
+    reloader.event_handler.dispatch(extra_event)
+    mock_trigger_reload.assert_called_once()
+
+    mock_trigger_reload.reset_mock()
+    pycache_event = FileModifiedEvent("sub/dir/__pycache__/app.pyc")
+    pycache_event.event_type = EVENT_TYPE_MODIFIED
+    reloader.event_handler.dispatch(pycache_event)
+    mock_trigger_reload.assert_not_called()
+
+    excluded_event = FileModifiedEvent("sub/dir/excluded.py")
+    excluded_event.event_type = EVENT_TYPE_MODIFIED
+    reloader.event_handler.dispatch(excluded_event)
+    mock_trigger_reload.assert_not_called()
+
+
 @pytest.mark.parametrize("find", [_find_stat_paths, _find_watchdog_paths])
 def test_exclude_patterns(
     find: t.Callable[[set[str], set[str]], cabc.Iterable[str]],
